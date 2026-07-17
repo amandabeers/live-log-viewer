@@ -1,0 +1,326 @@
+:root {
+  /* Palette — shared with the Workbench so the tool reads as one system. */
+  --bg: #010409;
+  --panel: #0d1117;
+  --panel-2: #161b22;
+  --border: #21262d;
+  --border-strong: #30363d;
+  --fg: #e6edf3;
+  --muted: #8b949e;
+  --dim: #6e7681;
+  --accent: #1f6feb;
+
+  /* Level colors. */
+  --lvl-debug: #8b949e;
+  --lvl-info: #58a6ff;
+  --lvl-warn: #d29922;
+  --lvl-error: #f85149;
+  --lvl-critical: #ff6ac1;
+
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---------- App shell: a full-viewport tool, not a scrolling page ---------- */
+
+.app {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ---------- Toolbar / FilterBar ---------- */
+
+.toolbar {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 14px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border-strong);
+}
+
+.toolbar__top {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.toolbar__title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.toolbar__spacer {
+  flex: 1 1 auto;
+}
+
+.counts {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.counts b {
+  color: var(--fg);
+  font-weight: 600;
+}
+
+/* Connection status */
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.status__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--dim);
+}
+
+.status--open .status__dot {
+  background: #3fb950;
+}
+
+.status--reconnecting .status__dot {
+  background: var(--lvl-warn);
+  animation: pulse 1s ease-in-out infinite;
+}
+
+.status--connecting .status__dot {
+  background: var(--muted);
+  animation: pulse 1s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+/* Filter chip rows */
+
+.filter-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.filter-row__label {
+  width: 62px;
+  flex: 0 0 auto;
+  color: var(--dim);
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+}
+
+.chip {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px;
+  background: var(--panel-2);
+  color: var(--muted);
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.1s, color 0.1s, border-color 0.1s, opacity 0.1s;
+}
+
+.chip:hover {
+  border-color: var(--muted);
+}
+
+/* Inactive (filtered out) chips read as dimmed/struck. */
+.chip[aria-pressed="false"] {
+  opacity: 0.45;
+}
+
+.chip[aria-pressed="false"] .chip__swatch {
+  background: transparent;
+  border-color: var(--dim);
+}
+
+.chip__swatch {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  border: 1px solid transparent;
+  background: var(--chip-color, var(--muted));
+}
+
+/* Active level chips take their color; active service chips get a neutral highlight. */
+.chip--active {
+  color: var(--fg);
+  background: var(--panel-2);
+  border-color: var(--chip-color, var(--accent));
+}
+
+.chip--level[data-level="debug"]    { --chip-color: var(--lvl-debug); }
+.chip--level[data-level="info"]     { --chip-color: var(--lvl-info); }
+.chip--level[data-level="warn"]     { --chip-color: var(--lvl-warn); }
+.chip--level[data-level="error"]    { --chip-color: var(--lvl-error); }
+.chip--level[data-level="critical"] { --chip-color: var(--lvl-critical); }
+.chip--service                      { --chip-color: var(--accent); }
+
+/* Small text action (all / none) */
+.link-btn {
+  flex: 0 0 auto;
+  margin-left: 4px;
+  padding: 3px 6px;
+  background: none;
+  color: var(--muted);
+  border: none;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.link-btn:hover {
+  color: var(--fg);
+}
+
+/* ---------- Log list ---------- */
+
+.log-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  position: relative;
+}
+
+.empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--dim);
+  text-align: center;
+  padding: 24px;
+}
+
+/* ---------- Log row ---------- */
+
+/*
+ * Fixed row height. This MUST stay in sync with ROW_H in App.tsx, which is passed to
+ * Virtuoso's `fixedItemHeight` so it can skip measuring rows (deterministic layout = no
+ * scroll jitter). box-sizing:border-box (global) means 26px includes the 1px border-bottom.
+ */
+.row {
+  display: grid;
+  grid-template-columns: 96px 78px 76px 1fr;
+  gap: 10px;
+  align-items: center;
+  height: 26px;
+  padding: 0 14px 0 11px;
+  border-left: 3px solid transparent;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.row:hover {
+  background: rgba(110, 118, 129, 0.08);
+}
+
+.row[data-level="debug"]    { border-left-color: var(--lvl-debug); }
+.row[data-level="info"]     { border-left-color: var(--lvl-info); }
+.row[data-level="warn"]     { border-left-color: var(--lvl-warn); }
+.row[data-level="error"]    { border-left-color: var(--lvl-error); }
+.row[data-level="critical"] { border-left-color: var(--lvl-critical); }
+
+/* Draw error/critical attention across the whole row. */
+.row[data-level="error"]    { background: rgba(248, 81, 73, 0.06); }
+.row[data-level="critical"] { background: rgba(255, 106, 193, 0.08); }
+
+.row__time {
+  color: var(--dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.row__level {
+  text-transform: uppercase;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+.row[data-level="debug"] .row__level    { color: var(--lvl-debug); }
+.row[data-level="info"] .row__level     { color: var(--lvl-info); }
+.row[data-level="warn"] .row__level     { color: var(--lvl-warn); }
+.row[data-level="error"] .row__level    { color: var(--lvl-error); }
+.row[data-level="critical"] .row__level { color: var(--lvl-critical); }
+
+.row__service {
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.row__message {
+  color: var(--fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---------- Jump to latest ---------- */
+
+.jump-btn {
+  position: absolute;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  background: var(--accent);
+  color: #fff;
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+  z-index: 10;
+}
+
+.jump-btn:hover {
+  background: #388bfd;
+}
