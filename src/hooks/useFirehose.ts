@@ -58,24 +58,20 @@ export function useFirehose({ paused = false }: Options = {}): FirehoseState {
     }
   
     const onOpen = () => {
-      console.log('Firehose connection opened');
       setStatus('open');
     }
 
     const onClose = () => {
-      console.log('Firehose connection closed');
       if (isIntentional.current) {
         isIntentional.current = false;
         return;
       }
-      console.log('Reconnecting to firehose...');
       setStatus('reconnecting');
       attemptReconnect();
     };
 
     const attemptReconnect = () => {
       if (firehose.status === 'closed') {
-        console.log('Attempting to reconnect to firehose...');
         firehose.connect();
       }
     };
@@ -124,7 +120,6 @@ export function useFirehose({ paused = false }: Options = {}): FirehoseState {
 
     return () => {
       if (rafId) cancelAnimationFrame(rafId);
-      console.log('Cleaning up firehose listeners and disconnecting');
       isIntentional.current = true;
       firehose.disconnect();
       offEntry();
