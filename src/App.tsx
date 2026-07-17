@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { Virtuoso } from 'react-virtuoso';
 import type { VirtuosoHandle } from 'react-virtuoso';
 import { Workbench } from './firehose/Workbench';
@@ -12,38 +12,54 @@ import { LogRow } from './components/LogRow';
 // `fixedItemHeight` so it skips per-row measurement — deterministic layout, no scroll jitter.
 const ROW_H = 26;
 
-// How long the list must stay away from the bottom before we treat it as a deliberate
-// scroll-up. While the buffer grows at high rate the bottom moves a lot each frame, so
-// Virtuoso's at-bottom signal flaps false→true every frame; debouncing the "stopped
-// following" transition absorbs that flapping (which would otherwise strobe the jump button
-// and stutter flushing) while still catching a real scroll-up.
-const FOLLOW_EXIT_DELAY_MS = 250;
+// Minimum upward scrollTop movement (px) that counts as a deliberate scroll-up. Real scrolls
+// (wheel/trackpad/scrollbar/keyboard) move more than this in an event; sub-pixel reflow noise
+// does not.
+const SCROLL_UP_PX = 4;
 
 export default function App() {
   const [activeLevels, setActiveLevels] = useState<Set<Level>>(new Set(LEVELS));
   const [activeServices, setActiveServices] = useState<Set<Service>>(new Set(SERVICES));
-  const [following, setFollowing] = useState(true);
-  const followOffTimer = useRef<number | null>(null);
   const virtuosoRef = useRef<VirtuosoHandle>(null);
 
-  // Debounce the false transition: re-pin immediately when we hit bottom, but only stop
-  // following after we've stayed off-bottom for FOLLOW_EXIT_DELAY_MS. Transient append-gaps
-  // during buffer growth resolve within a frame or two and cancel the timer before it fires.
-  const handleAtBottom = useCallback((atBottom: boolean) => {
-    if (followOffTimer.current) {
-      clearTimeout(followOffTimer.current);
-      followOffTimer.current = null;
-    }
-    if (atBottom) {
-      setFollowing(true);
-    } else {
-      followOffTimer.current = window.setTimeout(() => setFollowing(false), FOLLOW_EXIT_DELAY_MS);
-    }
+  // Following turns OFF when the user scrolls UP, and back ON only via the jump button — never
+  // automatically, so a filter change or content reflow can't resume tailing. `followingRef`
+  // mirrors the state synchronously for the scroll handler and `followOutput` (no state-lag).
+  const [following, setFollowing] = useState(true);
+  const followingRef = useRef(true);
+  const setFollow = useCallback((v: boolean) => {
+    followingRef.current = v;
+    setFollowing(v);
   }, []);
 
-  useEffect(() => () => {
-    if (followOffTimer.current) clearTimeout(followOffTimer.current);
-  }, []);
+  // Detect a real scroll-up from the actual scroll offset, not Virtuoso's `atBottom`. A burst
+  // (or any fast append) makes followOutput chase the bottom *downwards* — scrollTop only
+  // increases — while a user scroll-up *decreases* it. So we pause only when scrollTop moves up
+  // AND the list didn't just shrink (dHeight >= 0 filters out filter/eviction reflow clamps).
+  const scrollerElRef = useRef<HTMLElement | null>(null);
+  const lastTopRef = useRef(0);
+  const lastHeightRef = useRef(0);
+  const handleScroll = useCallback(() => {
+    const el = scrollerElRef.current;
+    if (!el) return;
+    const dTop = el.scrollTop - lastTopRef.current;
+    const dHeight = el.scrollHeight - lastHeightRef.current;
+    lastTopRef.current = el.scrollTop;
+    lastHeightRef.current = el.scrollHeight;
+    if (dTop < -SCROLL_UP_PX && dHeight >= 0 && followingRef.current) {
+      setFollow(false);
+    }
+  }, [setFollow]);
+
+  const setScrollerRef = useCallback((el: HTMLElement | Window | null) => {
+    if (scrollerElRef.current) scrollerElRef.current.removeEventListener('scroll', handleScroll);
+    scrollerElRef.current = el && 'scrollTop' in el ? (el as HTMLElement) : null;
+    if (scrollerElRef.current) {
+      lastTopRef.current = scrollerElRef.current.scrollTop;
+      lastHeightRef.current = scrollerElRef.current.scrollHeight;
+      scrollerElRef.current.addEventListener('scroll', handleScroll, { passive: true });
+    }
+  }, [handleScroll]);
 
   // Scrolling up pauses flushing (see useFirehose) so the view stays stable while reading.
   const { entries, status, pendingCount } = useFirehose({ paused: !following });
@@ -72,8 +88,10 @@ export default function App() {
   }, []);
 
   const jumpToBottom = useCallback(() => {
+    // The only way to resume tailing: force follow on and scroll to the newest entry.
+    setFollow(true);
     virtuosoRef.current?.scrollToIndex({ index: 'LAST', behavior: 'auto' });
-  }, []);
+  }, [setFollow]);
 
   return (
     <div className="app">
@@ -99,12 +117,11 @@ export default function App() {
         ) : (
           <Virtuoso
             ref={virtuosoRef}
+            scrollerRef={setScrollerRef}
             data={filteredEntries}
             computeItemKey={(_index, entry) => entry.id}
             fixedItemHeight={ROW_H}
-            atBottomThreshold={ROW_H * 4}
-            atBottomStateChange={handleAtBottom}
-            followOutput={(atBottom) => (atBottom ? 'auto' : false)}
+            followOutput={() => (followingRef.current ? 'auto' : false)}
             increaseViewportBy={200}
             itemContent={(_index, entry) => <LogRow entry={entry} />}
           />

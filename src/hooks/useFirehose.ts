@@ -10,7 +10,7 @@ type Service = LogEntry['service'];
 const SERVICES: Service[] = ['auth', 'api', 'pubsub', 'worker', 'cache', 'gateway'];
 
 interface Options {
-  /** When true (e.g. the user scrolled up), stop flushing new entries so the view stays put. */
+  /** Tracks if the user has scrolled up, stop flushing new entries so the view stays put. */
   paused?: boolean;
 }
 
@@ -21,9 +21,9 @@ interface FirehoseState {
   /** Connection lifecycle, surfaced for the UI status indicator. */
   status: Status;
   /**
-   * Approximate count of entries retained since the last flush — i.e. new arrivals the user
-   * hasn't seen because they scrolled up (which pauses flushing). Unfiltered and
-   * eviction-tolerant; good enough for a "jump to latest" affordance, not an exact figure.
+   * Count of new entries received since the last flush — i.e. arrivals the user hasn't seen
+   * because they scrolled up (which pauses flushing). Unfiltered, but exact (counted, not
+   * derived from buffer size, so it stays correct once the buffer is at its cap).
    */
   pendingCount: number;
 }
@@ -35,7 +35,11 @@ export function useFirehose({ paused = false }: Options = {}): FirehoseState {
 
   const store = useRef(new Map<string, LogEntry>());
   const isDirty = useRef(false);
-  const flushedSize = useRef(0);
+  // Monotonic count of unique entries ever received, and its value at the last flush. Their
+  // difference is the number of new arrivals the user hasn't seen — accurate even at the buffer
+  // cap, where store.size stays pinned at MAX_BUFFER_SIZE (evict-one/add-one).
+  const totalReceived = useRef(0);
+  const flushedTotal = useRef(0);
   const isPausedRef = useRef(paused); isPausedRef.current = paused;
   const isIntentional = useRef(false);
 
@@ -44,6 +48,7 @@ export function useFirehose({ paused = false }: Options = {}): FirehoseState {
       const map = store.current;
       if (map.has(entry.id)) return; // Deduped by id
       map.set(entry.id, entry);
+      totalReceived.current += 1;
 
       if (map.size > MAX_BUFFER_SIZE) {
         map.delete(map.keys().next().value!); // Remove oldest entry from buffer
@@ -77,7 +82,7 @@ export function useFirehose({ paused = false }: Options = {}): FirehoseState {
 
     const updateEntries = () => {
       const arr = Array.from(store.current.values());
-      flushedSize.current = arr.length;
+      flushedTotal.current = totalReceived.current;
       setEntries(arr);
     };
 
@@ -92,7 +97,7 @@ export function useFirehose({ paused = false }: Options = {}): FirehoseState {
       // When flushing is paused (user scrolled up), keep the view frozen but surface how many
       // entries have piled up since the last flush so "jump to latest" can badge a count.
       if (isPausedRef.current) {
-        const pending = Math.max(0, store.current.size - flushedSize.current);
+        const pending = Math.max(0, totalReceived.current - flushedTotal.current);
         if (pending !== lastPending) {
           lastPending = pending;
           setPendingCount(pending);
