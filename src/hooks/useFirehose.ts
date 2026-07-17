@@ -4,17 +4,33 @@ import type { LogEntry } from "../firehose/types";
 
 const MAX_BUFFER_SIZE = 10000;
 
-export function useFirehose() {
+type Level = LogEntry['level'];
+const LEVELS: Level[] = ['debug', 'info', 'warn', 'error', 'critical'];
+type Service = LogEntry['service'];
+const SERVICES: Service[] = ['auth', 'api', 'pubsub', 'worker', 'cache', 'gateway'];
+
+interface Options {
+  paused?: boolean;
+  isVisible?: (entry: LogEntry) => boolean;
+}
+
+interface FirehoseState {
+  entries: LogEntry[];
+}
+
+export function useFirehose({ paused = false, isVisible }: Options = {}): FirehoseState {
   const [entries, setEntries] = useState<LogEntry[]>([]);
 
   const store = useRef(new Map<string, LogEntry>());
   const isDirty = useRef(false);
+  const isPausedRef = useRef(paused); isPausedRef.current = paused;
+  const isVisibleRef = useRef(isVisible); isVisibleRef.current = isVisible;
   const isIntentional = useRef(false);
 
   useEffect(() => {
 
     const onEntry = (entry: LogEntry) => {
-      console.log('Received log entry:', entry);
+      // console.log('Received log entry:', entry);
       const map = store.current;
       if (map.has(entry.id)) return; // Deduped by id
       map.set(entry.id, entry);
@@ -54,7 +70,9 @@ export function useFirehose() {
 
     let rafId: number | null = null;
     const tick = () => {
-      if (isDirty.current) {
+      // don't update state if user has scrolled up from bottom
+      // don't update state if no new entries have been received
+      if (!isPausedRef.current && isDirty.current) {
         updateEntries();
         isDirty.current = false;
       }
@@ -80,5 +98,8 @@ export function useFirehose() {
     };
   }, []);
 
-  return entries;
+  return { entries };
 };
+
+export { LEVELS, SERVICES };
+export type { Level, Service };
