@@ -119,7 +119,7 @@ The useFirehose hook holds the logs. App.tsx renders the logs it receives from u
 
 The max buffer size and how to handle the user scrolling through the log viewer.
 
-Capping the buffer at 10k seemed like a reasonable value to maintain. The issue occurs when the user scrolls. If a user scrolls up to look at something, the page should stop auto scrolling for new entries and we also should not evict the entries they are currently looking at from the buffer. 
+Capping the buffer at 10k seemed like a reasonable value to maintain. The issue occurs when the user scrolls. If a user scrolls up to look at something, the page should stop auto scrolling for new entries and we also should not remove the entries they are currently looking at out from under them. 
 
 Three options when user scrolls:
 
@@ -147,8 +147,7 @@ Add counters to the level pill buttons tallying up how many of each level are pr
 
 Implement the context view. Now that filtering is available which will make finding what they are looking for easier for the user, the next logical step would be allowing them to click on the log they want to look at and see the details of it.
 
-Tests
-I'd focus most of the tests on the data ingestion and processing in useFirehose.ts.
+Tests - I'd focus most of the tests on the data ingestion and processing in useFirehose.ts.
 Test the connection/reconnect behavior, that entries are deduped by id, and ordered. Also test that state only updates once when several entries are received in one frame. That the correct behavior occurs during a user scroll. I would also test the filtering logic to verify it has been applied correctly.
 
 
