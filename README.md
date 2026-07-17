@@ -108,3 +108,59 @@ problem yourself.
 - We use your submission as the starting point for the onsite, not as a pass/fail filter. We'll
   walk through your code together, talk through the decisions behind it, and build on it from
   there, so be comfortable explaining and discussing any part of what you submit.
+
+## Design notes
+
+### Data flow
+
+The useFirehose hook holds the logs. App.tsx renders the logs it receives from useFirehose. useFirehose stores the logs it receives from the firehose in a ref and then periodically updates state with that data. This prevents React from attempting to rerender on every single message received which would crash the page. I chose a map to store the logs as they come in as it provides a fast way to check for duplicate ids and remove the oldest entries once the max buffer size is reached.
+
+### One decision
+
+The max buffer size and how to handle the user scrolling through the log viewer.
+
+Capping the buffer at 10k seemed like a reasonable value to maintain. The issue occurs when the user scrolls. If a user scrolls up to look at something, the page should stop auto scrolling for new entries and we also should not evict the entries they are currently looking at from the buffer. 
+
+Three options when user scrolls:
+
+1. Pause flushing new data to the log viewer
+
+    If the user has scrolled up while there is a large burst or the rate is currently very high, it is inevitable that entries will be purged from the 10k buffer during this time and they will never hit the page.
+
+2. Pause evicting entries from the buffer
+
+    If eviction is paused during a high rate or a burst, the buffer is potentially going to become very large. There has to be a cap somewhere, the buffer can't accumulate data forever, so even if I do this in an attempt to preserve the logs the user is potentially missing, at some point they will be purged anyway and nothing has really been gained by going this route while adding complexity in the form of needing to handle all that accumulated data once the user returns to the bottom of the page and the log resumes scrolling.
+
+3. Don't pause anything if the user scrolls up
+
+    This makes the log unusable to a user during high rates, as the logs are pretty immediately unreachable.
+
+I chose to go with option 1 of pausing the log viewer automatic scrolling, pausing sending new data from the buffer to state, and continuing to evict old entries from the buffer at the set max size of 10k. The tradeoff here is that it is very likely logs will be evicted from the buffer without the user seeing them during high rates. But the gain is a log that is legible to a user.
+
+### Next steps
+
+Find a better way to handle the resume scrolling, currently can only resume scrolling by clicking the button at the bottom of the page.
+
+Investigate the slight strobing effect when there is a high rate but the buffer has not reached max size.
+
+Add counters to the level pill buttons tallying up how many of each level are present in the log viewer.
+
+Implement the context view. Now that filtering is available which will make finding what they are looking for easier for the user, the next logical step would be allowing them to click on the log they want to look at and see the details of it.
+
+Tests
+I'd focus most of the tests on the data ingestion and processing in useFirehose.ts.
+Test the connection/reconnect behavior, that entries are deduped by id, and ordered. Also test that state only updates once when several entries are received in one frame. That the correct behavior occurs during a user scroll. I would also test the filtering logic to verify it has been applied correctly.
+
+
+### AI Note
+
+AI tools used: Claude Code
+
+* Used during planning to bounce ideas off to refine the plan/approach I created after reading the README and the wire contract
+* Layout and styling
+* To fix a few bugs:
+    * Auto scrolling was jittery while filters were on
+    * A change in filters caused auto-scrolling to re-engage even if the user had been scrolled up
+    * A burst while filters were on caused the log to stop following the tail and pause as if the user had scrolled up
+
+
