@@ -10,27 +10,37 @@ type Service = LogEntry['service'];
 const SERVICES: Service[] = ['auth', 'api', 'pubsub', 'worker', 'cache', 'gateway'];
 
 interface Options {
+  /** When true (e.g. the user scrolled up), stop flushing new entries so the view stays put. */
   paused?: boolean;
-  isVisible?: (entry: LogEntry) => boolean;
 }
+
+type Status = 'connecting' | 'open' | 'reconnecting';
 
 interface FirehoseState {
   entries: LogEntry[];
+  /** Connection lifecycle, surfaced for the UI status indicator. */
+  status: Status;
+  /**
+   * Approximate count of entries retained since the last flush — i.e. new arrivals the user
+   * hasn't seen because they scrolled up (which pauses flushing). Unfiltered and
+   * eviction-tolerant; good enough for a "jump to latest" affordance, not an exact figure.
+   */
+  pendingCount: number;
 }
 
-export function useFirehose({ paused = false, isVisible }: Options = {}): FirehoseState {
+export function useFirehose({ paused = false }: Options = {}): FirehoseState {
   const [entries, setEntries] = useState<LogEntry[]>([]);
+  const [status, setStatus] = useState<Status>('connecting');
+  const [pendingCount, setPendingCount] = useState(0);
 
   const store = useRef(new Map<string, LogEntry>());
   const isDirty = useRef(false);
+  const flushedSize = useRef(0);
   const isPausedRef = useRef(paused); isPausedRef.current = paused;
-  const isVisibleRef = useRef(isVisible); isVisibleRef.current = isVisible;
   const isIntentional = useRef(false);
 
   useEffect(() => {
-
     const onEntry = (entry: LogEntry) => {
-      // console.log('Received log entry:', entry);
       const map = store.current;
       if (map.has(entry.id)) return; // Deduped by id
       map.set(entry.id, entry);
@@ -44,8 +54,9 @@ export function useFirehose({ paused = false, isVisible }: Options = {}): Fireho
   
     const onOpen = () => {
       console.log('Firehose connection opened');
+      setStatus('open');
     }
-  
+
     const onClose = () => {
       console.log('Firehose connection closed');
       if (isIntentional.current) {
@@ -53,6 +64,7 @@ export function useFirehose({ paused = false, isVisible }: Options = {}): Fireho
         return;
       }
       console.log('Reconnecting to firehose...');
+      setStatus('reconnecting');
       attemptReconnect();
     };
 
@@ -65,16 +77,34 @@ export function useFirehose({ paused = false, isVisible }: Options = {}): Fireho
 
     const updateEntries = () => {
       const arr = Array.from(store.current.values());
+      flushedSize.current = arr.length;
       setEntries(arr);
     };
 
+    // Flush at most once per animation frame. This is the real coalescing: however many
+    // entries land within a frame (a burst can deliver thousands), they fold into a single
+    // setEntries — the smallest possible batch per paint, which keeps Virtuoso's
+    // follow-the-bottom scroll correction small and smooth. Throttling coarser than a frame
+    // makes each batch (and each scroll jump) bigger, i.e. more jitter, not less.
     let rafId: number | null = null;
+    let lastPending = 0;
     const tick = () => {
-      // don't update state if user has scrolled up from bottom
-      // don't update state if no new entries have been received
-      if (!isPausedRef.current && isDirty.current) {
+      // When flushing is paused (user scrolled up), keep the view frozen but surface how many
+      // entries have piled up since the last flush so "jump to latest" can badge a count.
+      if (isPausedRef.current) {
+        const pending = Math.max(0, store.current.size - flushedSize.current);
+        if (pending !== lastPending) {
+          lastPending = pending;
+          setPendingCount(pending);
+        }
+      } else if (isDirty.current) {
+        // don't update state if no new entries have been received
         updateEntries();
         isDirty.current = false;
+        if (lastPending !== 0) {
+          lastPending = 0;
+          setPendingCount(0);
+        }
       }
       rafId = requestAnimationFrame(tick);
     };
@@ -98,7 +128,7 @@ export function useFirehose({ paused = false, isVisible }: Options = {}): Fireho
     };
   }, []);
 
-  return { entries };
+  return { entries, status, pendingCount };
 };
 
 export { LEVELS, SERVICES };
