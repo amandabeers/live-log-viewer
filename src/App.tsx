@@ -1,6 +1,9 @@
 import { Workbench } from './firehose/Workbench';
+import { useFirehose } from './hooks/useFirehose';
 
 export default function App() {
+  const entries = useFirehose();
+
   return (
     <main style={{ font: '14px/1.5 system-ui, sans-serif', padding: 24, color: '#e6edf3', background: '#010409', minHeight: '100vh' }}>
       <h1 style={{ fontSize: 18, marginBottom: 8 }}>Realtime Log Stream Viewer</h1>
